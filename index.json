@@ -126,6 +126,35 @@
       "publishedAt": "2026-11-01T07:41:40.950Z"
     },
     {
+      "id": "meme-wiki",
+      "name": "梗百科",
+      "version": "0.2.5",
+      "description": "本地梗库：聊天里命中就把词条塞进上下文；词条从梗站按需导入，不随模块分发。",
+      "category": "social",
+      "tags": [
+        "梗",
+        "词典",
+        "聊天"
+      ],
+      "author": "Nightc",
+      "license": "MIT",
+      "api": 1,
+      "minPluginVersion": "1.2.0",
+      "requires": [],
+      "capabilities": [
+        "network",
+        "filesystem"
+      ],
+      "replacesBuiltin": false,
+      "tag": "meme-wiki-v0.2.5",
+      "file": "meme-wiki-v0.2.5.zip",
+      "path": "meme-wiki-v0.2.5/meme-wiki-v0.2.5.zip",
+      "size": 31626,
+      "sha256": "090111eeacc0dcd73502982be7ebb12cddf99623282fbe47b87eeae8a63e3551",
+      "commit": "793ddb67f7d18ab41cfff7a00266662daaa1285d",
+      "publishedAt": "2026-11-01T14:34:36.307Z"
+    },
+    {
       "id": "pet",
       "name": "桌宠",
       "version": "1.0.4",
@@ -191,5 +220,5 @@
     }
   ],
   "revoked": [],
-  "generatedAt": "2026-11-01T14:09:09.303Z"
+  "generatedAt": "2026-11-01T14:34:36.307Z"
 }
