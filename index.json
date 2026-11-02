@@ -249,8 +249,38 @@
       "sha256": "5bae45ed881f062c932186df4342ebc98c5e6d7fc635d917fd5e00b3334dca63",
       "commit": "2498720e6bb617017f603449987e90b9c6eb5633",
       "publishedAt": "2026-10-30T19:27:42.374Z"
+    },
+    {
+      "id": "tophub",
+      "name": "刷热榜",
+      "version": "0.2.0",
+      "description": "热榜巡游：每天定时逛全网热榜（微博/抖音/知乎/头条等），看完写记忆、挑有意思的私聊分享给主人；对外提供 hot()/search() 热点控件。",
+      "category": "platform",
+      "tags": [
+        "热榜",
+        "资讯",
+        "巡游"
+      ],
+      "author": "Nightc",
+      "license": "MIT",
+      "api": 1,
+      "minPluginVersion": "1.2.0",
+      "requires": [],
+      "capabilities": [
+        "network",
+        "filesystem",
+        "plugin-config"
+      ],
+      "replacesBuiltin": false,
+      "tag": "tophub-v0.2.0",
+      "file": "tophub-v0.2.0.zip",
+      "path": "tophub-v0.2.0/tophub-v0.2.0.zip",
+      "size": 17538,
+      "sha256": "0fd172065411ecd67768370a6883f72032461f3f1d8b88b2c25343213fad2945",
+      "commit": "faea03fa0ff6864202839e78014fd80b612aced4",
+      "publishedAt": "2026-11-02T15:07:36.822Z"
     }
   ],
   "revoked": [],
-  "generatedAt": "2026-11-02T15:05:50.855Z"
+  "generatedAt": "2026-11-02T15:07:36.822Z"
 }
