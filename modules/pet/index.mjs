@@ -25,7 +25,7 @@ import { join, dirname, sep, basename, extname } from 'node:path'
 import { spawn as nodeSpawn } from 'node:child_process'
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto'
 import { createRequire } from 'node:module'
-import { inflateRawSync } from 'node:zlib'
+import { deflateRawSync, inflateRawSync } from 'node:zlib'
 
 const ONLINE_TTL = 60_000        // 心跳超时：60 秒内没轮询过 /events 就算离线
 const EVENT_LIMIT = 200          // 事件内存队列上限
@@ -86,6 +86,9 @@ export default {
     // 天气（一期，服务端接入）：城市留空 = 不接入；接口留空用内置默认（wttr.in，免 key）
     petWeatherCity: '',
     petWeatherUrl: '',                 // 接口地址模板，{city} 会被替换成编码后的城市名；返回纯文本即可
+    // 对外公网地址（远端直连，2026-11-02 起）：填了 http(s) 完整地址（如 https://bot.example.com），
+    // host.json 的 baseUrl 就写它，桌宠客户端可在用户自己电脑直连服务器插件。留空 = 全部行为与旧版一致（同机零退化）
+    publicBaseUrl: '',
   },
   settings: [
     { key: 'carrier', label: '主动搭话载体', type: 'select', options: [{ value: 'qq', label: 'QQ 私聊' }, { value: 'pet', label: '桌宠气泡' }], hint: 'pet 时桌宠不在线会按下面的开关回落到 QQ；两边永不双发' },
@@ -132,6 +135,7 @@ export default {
     // 天气（一期）：进 prompt 的「现在」段，她聊到出门/穿衣/下雨时接得上
     { key: 'petWeatherCity', label: '天气城市', type: 'text', hint: '填城市名（如 上海）才接入天气；留空 = 不接入，所有天气逻辑静默跳过。填了之后插件会向天气接口（默认 wttr.in，可在下方替换地址）请求这个城市的天气，结果只进 prompt 和本地缓存，不会发给聊天对象；天气接口本身会看到城市名' },
     { key: 'petWeatherUrl', label: '天气接口地址', type: 'text', hint: '高级：接口模板，{city} 会被替换成编码后的城市名，返回纯文本即可（如 https://wttr.in/{city}?format=%C+%t）。留空 = 用内置默认（wttr.in，免 key）；请求失败保留上一次缓存、不打扰' },
+    { key: 'publicBaseUrl', label: '对外公网地址（远端直连）', type: 'text', hint: '服务器部署（无桌面）时填插件对外地址，如 https://bot.example.com（带 https:// 前缀，末尾斜杠可省）。填了之后：host.json 的 baseUrl 写它，桌宠客户端可在你自己的电脑上直连服务器；面板「桌宠」页会出现「下载客户端包」按钮，服务器上的 Electron 安装/启动按钮自动隐藏。留空 = 同机模式，一切照旧。跨机必须走 https（客户端会收到明文 http 警告）；安全只靠 x-pet-token 一道闸，别把令牌外泄' },
   ],
 
 
@@ -175,6 +179,32 @@ export default {
       try { return timingSafeEqual(Buffer.from(a), Buffer.from(b)) } catch { return false }
     }
 
+    // ---------- 远端直连（publicBaseUrl，2026-11-02）----------
+    // 单一真相：ext.pet.publicBaseUrl（api.settings() = defaults ∪ ext.pet，host.js 面板写入通道同键）。
+    // 合法 http(s) URL 才生效；显式配置优先于 X-Forwarded 兜底学习。未配置（空串/坏值）时
+    // writeHostFile / learnHost / guard 的行为与旧版逐字节一致——这是「同机零退化」的实现点。
+    const LOOPBACK_HOSTS = ['127.0.0.1', 'localhost', '::1']
+    let learnedPublic = '' // 反代 X-Forwarded-Proto/Host 兜底学习的对外地址（只在没显式配置时用）
+    /** 当前生效的对外地址：{ url, host } 或 null（未配置且未学到 → 纯同机模式）。 */
+    function publicBase() {
+      const raw = String(api.settings().publicBaseUrl || '').trim().replace(/\/+$/, '')
+      if (/^https?:\/\//i.test(raw)) {
+        try { const u = new URL(raw); if (u.hostname) return { url: raw, host: u.hostname.toLowerCase().replace(/^\[|\]$/g, '') } } catch {}
+      }
+      if (learnedPublic) {
+        try { const u = new URL(learnedPublic); if (u.hostname) return { url: learnedPublic, host: u.hostname.toLowerCase().replace(/^\[|\]$/g, '') } } catch {}
+      }
+      return null
+    }
+    const isLoopbackHost = (h) => LOOPBACK_HOSTS.includes(String(h || '').toLowerCase().replace(/^\[|\]$/g, ''))
+    /** Host/Origin 主机名是否放行：回环 或 与对外地址主机名一致（端口段忽略，真正鉴权交给 x-pet-token）。 */
+    const hostAllowed = (hostname) => {
+      const h = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '')
+      if (isLoopbackHost(h)) return true
+      const pb = publicBase()
+      return Boolean(pb && h === pb.host)
+    }
+
     // ---------- host.json（baseUrl 端口会漂移：从请求 Host 头学习） ----------
     let knownPort = ''
     let lastHostWriteAt = 0
@@ -186,7 +216,8 @@ export default {
         version: 1,
         // 端口未就绪写 null（客户端 readHost 的正则不匹配就一直等，不再写假的 :0 造成自举死锁）；
         // 真实端口由宿主启动时经 setWebPort() 注入，Host 头学习保留作漂移纠正。
-        baseUrl: knownPort ? `http://127.0.0.1:${knownPort}` : null,
+        // 远端直连：配置了 publicBaseUrl 时 baseUrl 一律写它（api 字段照旧）；未配置时与旧版逐字节一致。
+        baseUrl: publicBase() ? publicBase().url : (knownPort ? `http://127.0.0.1:${knownPort}` : null),
         token: token(),
         api: `/aurabot/api`,
         pluginVersion: api.version,
@@ -194,7 +225,26 @@ export default {
       }
       try { writeJsonAtomic(hostFile(), data) } catch (error) { api.log.warn('写 host.json 失败：', String(error.message || error)) }
     }
-    /** 从请求 Host 头学习真实端口（回环校验也看它）；变了就重写 host.json。 */
+    /** 反代 X-Forwarded-Proto/Host 兜底学习对外地址（只在未显式配置 publicBaseUrl 时生效）。
+     *  安全铁律：**只能在 token 鉴权通过之后调用**——学习会改写 host.json 的 baseUrl，
+     *  若在鉴权前调用，任何未鉴权的外部请求都能投毒 host.json，还能借 hostAllowed() 绕过 Host 闸，
+     *  最终把桌宠客户端的 bearer 令牌引到攻击者服务器。 */
+    function learnForwardedPublic(req) {
+      // 显式配置优先：面板填了 publicBaseUrl 就完全不认反代头（防伪造头覆盖真实配置）
+      if (String(api.settings().publicBaseUrl || '').trim()) return false
+      const fwdHost = String(req?.headers?.['x-forwarded-host'] || '').split(',')[0].trim()
+      const fwdProto = String(req?.headers?.['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase()
+      if (!fwdHost || !['http', 'https'].includes(fwdProto)) return false
+      const candidate = `${fwdProto}://${fwdHost}`.replace(/\/+$/, '')
+      if (candidate === learnedPublic) return true
+      learnedPublic = candidate
+      if (publicBase()) writeHostFile(true)
+      return true
+    }
+    /** 从请求 Host 头学习真实端口（回环校验也看它）；变了就重写 host.json。
+     *  远端直连模式下：① 回环 Host 的端口学习停用（一次经反代的请求会把 host.json 的远端地址冲掉）；
+     *  ② 非回环 Host 这里只做解析不做任何写入——X-Forwarded 对外地址学习已搬到
+     *     learnForwardedPublic()，且必须等 token 鉴权通过后才允许调用（见 guard）。 */
     function learnHost(req) {
       const raw = String(req?.headers?.host || '')
       // IPv6 字面量 [::1]:端口 或 普通主机:端口；贪婪匹配会把端口吃进主机名，这里显式分分支
@@ -202,7 +252,9 @@ export default {
       if (!m) return null
       const host = String(m[1] || '').toLowerCase()
       const port = m[2] || ''
-      if (!['127.0.0.1', 'localhost', '::1'].includes(host)) return { host, port, loopback: false }
+      if (!isLoopbackHost(host)) return { host, port, loopback: false }
+      // 远端模式：Host 头端口学习停用（写远端地址时不看本机端口）；同机模式照旧学习漂移
+      if (publicBase()) return { host, port, loopback: true }
       if (port && port !== knownPort) { knownPort = port; writeHostFile(true) }
       return { host, port, loopback: true }
     }
@@ -219,21 +271,27 @@ export default {
     }
     const portReady = () => Boolean(knownPort)
 
-    // ---------- 准入：回环 Host → 非 GET 同源 + JSON → 定长令牌比对 ----------
+    // ---------- 准入：回环/对外地址 Host → 非 GET 同源 + JSON → 定长令牌比对 ----------
+    // 远端直连（2026-11-02）：Host/Origin 的主机名 ∈ {回环, publicBaseUrl 主机名} 即放行（端口段忽略）；
+    // x-pet-token 定长比对一字不动——跨机场景它就是唯一防线。
     function deny(res, code, message) {
       api.core.http.send(res, code, { ok: false, message })
       return { ok: false, code, message }
     }
     function guard(req, res, { queryTokenOk = false } = {}) {
+      // learnHost 只保留「回环 Host 的端口漂移学习」（同机模式原样工作）；它不再碰对外地址。
       const learned = learnHost(req)
-      if (!learned || !learned.loopback) return deny(res, 403, '只接受本机回环访问（Host 头必须指向 127.0.0.1）')
+      // Host 闸保持严格：放行集合只来自两处——回环，或显式配置的 publicBaseUrl。
+      // 绝不「Host 与请求自报的 X-Forwarded-Host 一致就放行」：X-Forwarded-* 不是浏览器禁设头，
+      // 页面 JS 用 fetch 就能伪造，那样 DNS rebinding 场景下一发就绕过 Host 闸。
+      if (!learned || !hostAllowed(learned.host)) return deny(res, 403, '只接受本机回环或已配置对外地址（publicBaseUrl）的访问（Host 头不匹配）')
       const isGet = (req.method || 'GET').toUpperCase() === 'GET'
       if (!isGet) {
         const origin = String(req.headers?.origin || '')
         if (origin) {
           try {
             const o = new URL(origin)
-            if (!['127.0.0.1', 'localhost', '[::1]'].includes(o.hostname.toLowerCase())) return deny(res, 403, '跨站请求被拒绝')
+            if (!hostAllowed(o.hostname)) return deny(res, 403, '跨站请求被拒绝')
           } catch { return deny(res, 403, '跨站请求被拒绝') }
         }
         const ct = String(req.headers?.['content-type'] || '')
@@ -242,6 +300,10 @@ export default {
       const q = api.core.http.query(req)
       const given = String(req.headers?.['x-pet-token'] || (queryTokenOk ? q.token || '' : '') || '')
       if (!safeEqual(given, token())) return deny(res, 401, '桌宠令牌无效：先运行一次桌宠客户端（令牌在数据目录 pet/host-token）')
+      // 鉴权已通过才允许「学习并写盘」。顺序不能反：学习会改写 host.json 的 baseUrl，而 hostAllowed()
+      // 又读它——一旦挪到 token 校验之前，任何未鉴权的伪造 Host/X-Forwarded 请求都能把 baseUrl 投毒成
+      // 攻击者地址，同时借被污染的 publicBase() 绕过 Host 闸，最终把桌宠客户端的 bearer 令牌引到攻击者服务器。
+      learnForwardedPublic(req)
       return { ok: true, query: q }
     }
 
@@ -830,6 +892,105 @@ export default {
       const buf = Buffer.from(await res.arrayBuffer())
       writeFileSync(file, buf)
       return buf
+    }
+
+    // ---------- 客户端包分发（远端直连，2026-11-02）----------
+    // 服务器部署（配了 publicBaseUrl）时用户在自己电脑跑桌宠：把 app/ 目录 + 当前 host.json
+    // （远端模式下 baseUrl 已是远端地址、内含 token）打成一个 zip 供面板下载。
+    // zip 打包用 Node 自带 zlib 纯 JS 实现（deflate + CRC32，零依赖、零外部命令），不引第三方大件。
+    const CRC32_TABLE = (() => {
+      const t = new Int32Array(256)
+      for (let n = 0; n < 256; n++) {
+        let c = n
+        for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+        t[n] = c
+      }
+      return t
+    })()
+    const crc32 = (buf) => {
+      let c = -1
+      for (let i = 0; i < buf.length; i++) c = CRC32_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8)
+      return (c ^ -1) >>> 0
+    }
+    /** entries: [{ name(用 / 分隔), data(Buffer|string) }] → zip Buffer（deflate + CRC32；条目带 UTF-8 名字标志）。 */
+    function zipBuffer(entries) {
+      const parts = []
+      const centrals = []
+      let offset = 0
+      for (const e of entries) {
+        const name = Buffer.from(String(e.name), 'utf8')
+        const raw = Buffer.isBuffer(e.data) ? e.data : Buffer.from(e.data)
+        let def = null
+        try { def = deflateRawSync(raw) } catch { def = null } // 压不动就按存储法写
+        const useDeflate = def && def.length < raw.length
+        const data = useDeflate ? def : raw
+        const crc = crc32(raw)
+        const lh = Buffer.alloc(30)
+        lh.writeUInt32LE(0x04034b50, 0)     // local file header 签名
+        lh.writeUInt16LE(20, 4)             // 解压所需版本
+        lh.writeUInt16LE(0x0800, 6)         // 标志位 bit11：UTF-8 文件名
+        lh.writeUInt16LE(useDeflate ? 8 : 0, 8)
+        lh.writeUInt16LE(0, 10)             // 时间 / 日期（0 即可，解压端不校验）
+        lh.writeUInt16LE(0, 12)
+        lh.writeUInt32LE(crc, 14)
+        lh.writeUInt32LE(data.length, 18)   // 压缩后大小
+        lh.writeUInt32LE(raw.length, 22)    // 原始大小
+        lh.writeUInt16LE(name.length, 26)
+        lh.writeUInt16LE(0, 28)             // extra 长度
+        parts.push(lh, name, data)
+        const cd = Buffer.alloc(46)
+        cd.writeUInt32LE(0x02014b50, 0)     // central directory 签名
+        cd.writeUInt16LE(20, 4)             // 创建用版本
+        cd.writeUInt16LE(20, 6)             // 解压所需版本
+        cd.writeUInt16LE(0x0800, 8)         // UTF-8 名字
+        cd.writeUInt16LE(useDeflate ? 8 : 0, 10)
+        cd.writeUInt32LE(crc, 16)
+        cd.writeUInt32LE(data.length, 20)
+        cd.writeUInt32LE(raw.length, 24)
+        cd.writeUInt16LE(name.length, 28)
+        // extra/comment/磁盘号/内部外部属性全 0（普通文件；unzipTo 只靠类型位判符号链接，0 安全）
+        cd.writeUInt32LE(offset, 42)        // local header 偏移
+        centrals.push(Buffer.concat([cd, name]))
+        offset += lh.length + name.length + data.length
+      }
+      const cdBuf = Buffer.concat(centrals)
+      const eocd = Buffer.alloc(22)
+      eocd.writeUInt32LE(0x06054b50, 0)
+      eocd.writeUInt16LE(entries.length, 8)
+      eocd.writeUInt16LE(entries.length, 10)
+      eocd.writeUInt32LE(cdBuf.length, 12)
+      eocd.writeUInt32LE(offset, 16) // central directory 起始偏移
+      return Buffer.concat([...parts, cdBuf, eocd])
+    }
+    /** 打客户端包：installClient() 先生成 app/，再递归收集 + 附 host.json。返回 { ok, filename, buffer, message }。 */
+    function clientPackage() {
+      try {
+        const r = installClient()
+        if (!r.ok) return { ok: false, message: r.message }
+        const dir = appDir()
+        const entries = []
+        const walk = (d, rel) => {
+          let list = []
+          try { list = readdirSync(d, { withFileTypes: true }) } catch { return }
+          for (const e of list) {
+            const p = join(d, e.name)
+            const name = rel ? `${rel}/${e.name}` : e.name
+            if (e.isDirectory()) walk(p, name)
+            else if (e.isFile()) { try { entries.push({ name, data: readFileSync(p) }) } catch (err) { api.log.warn(`打客户端包跳过 ${name}：`, String(err?.message || err)) } }
+          }
+        }
+        walk(dir, '')
+        if (!entries.some((x) => x.name === 'main.js')) return { ok: false, message: '客户端包里没有 main.js：pet-client 模板可能缺失（' + join(api.dir, 'pet-client') + '）' }
+        try { entries.push({ name: 'host.json', data: readFileSync(hostFile(), 'utf8') }) } catch {}
+        return {
+          ok: true,
+          filename: 'aurabot-pet-client.zip',
+          buffer: zipBuffer(entries),
+          message: `客户端包已生成（${entries.length} 个文件，含内嵌 host.json）。解压后在本机装好 Electron，在解压目录运行 npx electron main.js`,
+        }
+      } catch (error) {
+        return { ok: false, message: '打客户端包失败：' + String(error?.message || error).slice(0, 160) }
+      }
     }
 
     // ---------- 默认素材包自动下载（装完即有，用户零操作） ----------
@@ -2574,6 +2735,7 @@ export default {
         portReady: portReady(), port: knownPort ? Number(knownPort) : null,
         electronInstalled: existsSync(electronExe()), pid: recordedPid()?.pid || null,
         client: clientStatus(), // 生成物对账：缺 behavior.js 这类「旧壳」在这里现形
+        remoteClient: Boolean(publicBase()), publicBaseUrl: publicBase() ? publicBase().url : '', // 面板据此切「下载客户端包」分支
         hostFile: hostFile(), clientDir: api.dataDir('app'), serverTime: Date.now(),
       })
     })
@@ -2774,6 +2936,15 @@ export default {
       const r = installClient()
       api.core.http.send(res, 200, { ...r, client: clientStatus() })
     })
+    // 客户端包（zip）：app/ 目录 + 内嵌 host.json 一起打；面板「下载客户端包」经宿主 /panel/pet/client-package 走这里
+    api.route('/client-package', (req, res) => {
+      if (!guard(req, res).ok) return
+      const r = clientPackage()
+      if (!r.ok) return api.core.http.send(res, 500, r)
+      res.setHeader?.('content-type', 'application/zip')
+      res.setHeader?.('content-disposition', `attachment; filename="${r.filename}"`)
+      res.end(r.buffer)
+    })
     // 生成物核对：真机排查「行为层怎么没反应」的第一步（curl 这个就知道 app/ 缺没缺文件）
     api.route('/client/status', (req, res) => {
       if (!guard(req, res).ok) return
@@ -2830,6 +3001,7 @@ export default {
       writeHostFile,
       installClient,
       download: async () => installClient(), // 面板经 /panel/pet/download 调这个（host.js 降级路径按有没有这个函数判断）
+      clientPackage,                         // 远端直连：app/ 目录 + host.json 打 zip（面板「下载客户端包」同函数）
       setWebPort,                            // 宿主（host.js）启动时注入真实 Web 端口，破自举死锁
       portReady,
       electronInstall,                       // 面板经 /panel/pet/electron-install 调（npmmirror 镜像装 Electron）
@@ -2897,6 +3069,7 @@ export default {
           portReady: portReady(), port: knownPort ? Number(knownPort) : null,
           electronInstalled: existsSync(electronExe()), pid: recordedPid()?.pid || null,
           client: clientStatus(), // 面板「桌宠」卡据此提示重新生成（缺文件 = 行为层静默失效）
+          remoteClient: Boolean(publicBase()), publicBaseUrl: publicBase() ? publicBase().url : '', // 面板据此把 Electron 三键换成「下载客户端包」
         }
       },
       state: () => ({ count: delivered.length }),

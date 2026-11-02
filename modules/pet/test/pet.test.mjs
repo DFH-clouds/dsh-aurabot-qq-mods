@@ -1492,3 +1492,234 @@ test('天气：配置城市后拉取进缓存与 prompt；城市留空整块静�
   assert.equal(env3.exports.petChatStatus().weather, '')
   assert.equal(env3.exports.petChatStatus().weatherCity, '')
 })
+
+// ---------- 远端直连（publicBaseUrl，2026-11-02）：配置后桌宠可跨机连服务器；同机零退化 ----------
+
+test('远端直连：配置 publicBaseUrl 后 host.json 写远端地址；status 报 remoteClient', async () => {
+  const env = startModule({ settings: { publicBaseUrl: 'https://bot.example.com' } })
+  const hostFile = env.api.dataDir('host.json')
+  const h = JSON.parse(readFileSync(hostFile, 'utf8'))
+  assert.equal(h.baseUrl, 'https://bot.example.com', '配置了对外地址：baseUrl 写它')
+  assert.equal(h.api, '/aurabot/api', 'api 字段照旧')
+  assert.equal(h.token, env.token, 'token 照旧')
+  assert.equal(env.exports.status().remoteClient, true)
+  assert.equal(env.exports.status().publicBaseUrl, 'https://bot.example.com')
+  // 末尾斜杠剥掉再存；非法值（非 http(s)）一律当未配置
+  const env2 = startModule({ settings: { publicBaseUrl: 'https://bot.example.com/' } })
+  assert.equal(JSON.parse(readFileSync(env2.api.dataDir('host.json'), 'utf8')).baseUrl, 'https://bot.example.com', '末尾斜杠剥掉')
+  const env3 = startModule({ settings: { publicBaseUrl: 'ftp://nope' } })
+  assert.equal(JSON.parse(readFileSync(env3.api.dataDir('host.json'), 'utf8')).baseUrl, null, '非法 URL 不生效：照旧写 null')
+  assert.equal(env3.exports.status().remoteClient, false)
+})
+
+test('远端直连：guard 对远端 Host/Origin 放行；无 token 401；Host 不匹配 403；token 逻辑一字不动', async () => {
+  const env = startModule({ settings: { publicBaseUrl: 'https://bot.example.com' } })
+  // 远端 Host + 正确 token → 放行
+  const ok = await env.call('/status', { headers: { host: 'bot.example.com' } })
+  assert.equal(ok.status, 200, '远端 Host（与 publicBaseUrl 主机名一致，端口段忽略）放行')
+  const okPort = await env.call('/status', { headers: { host: 'bot.example.com:8443' } })
+  assert.equal(okPort.status, 200, '端口段忽略')
+  // 无 token 的远端请求 → 401（跨机唯一防线，一字未动）
+  const noTk = await env.call('/status', { token: '', headers: { host: 'bot.example.com' } })
+  assert.equal(noTk.status, 401)
+  const badTk = await env.call('/status', { token: 'deadbeef'.repeat(6), headers: { host: 'bot.example.com' } })
+  assert.equal(badTk.status, 401)
+  // Host 不匹配（非回环也非配置主机）→ 403
+  const badHost = await env.call('/status', { headers: { host: 'evil.example.net' } })
+  assert.equal(badHost.status, 403)
+  // Origin：远端同域放行；陌生域 403
+  const okOrigin = await env.call('/focus', { method: 'POST', json: { enabled: true }, headers: { host: 'bot.example.com', origin: 'https://bot.example.com' } })
+  assert.equal(okOrigin.status, 200, 'Origin 主机 = 配置主机 → 放行')
+  const badOrigin = await env.call('/focus', { method: 'POST', json: { enabled: false }, headers: { origin: 'https://evil.example.net' } })
+  assert.equal(badOrigin.status, 403, '跨站 Origin 仍拒绝')
+  // 同机回环路径照常可用
+  const loop = await env.call('/status')
+  assert.equal(loop.status, 200)
+})
+
+test('远端直连：Host 头端口学习停用（远端地址不被冲掉）；X-Forwarded 兜底学习生效（显式配置优先）', async () => {
+  const env = startModule({ settings: { publicBaseUrl: 'https://bot.example.com' } })
+  const hostFile = env.api.dataDir('host.json')
+  await env.call('/status', { headers: { host: '127.0.0.1:53299' } })
+  assert.equal(JSON.parse(readFileSync(hostFile, 'utf8')).baseUrl, 'https://bot.example.com', '远端模式：回环 Host 学习不再改写 host.json')
+
+  // 未显式配置：反代同机转发（Host 是回环，先过 Host 闸；X-Forwarded 说明真实对外地址）→ 鉴权后学习
+  const env2 = startModule({})
+  const hf2 = env2.api.dataDir('host.json')
+  const fwd = await env2.call('/status', { headers: { host: '127.0.0.1:53210', 'x-forwarded-proto': 'https', 'x-forwarded-host': 'learned.example.com' } })
+  assert.equal(fwd.status, 200, '反代同机转发（回环 Host + 合法 token）放行')
+  assert.equal(JSON.parse(readFileSync(hf2, 'utf8')).baseUrl, 'https://learned.example.com', '鉴权通过后的兜底学习写进 host.json')
+  // 显式配置优先：设置后兜底学习不再覆盖
+  env2.api.saveSettings({ publicBaseUrl: 'https://explicit.example.com' })
+  env2.exports.writeHostFile(true)
+  await env2.call('/status', { headers: { host: '127.0.0.1:53210', 'x-forwarded-proto': 'https', 'x-forwarded-host': 'other.example.net' } })
+  assert.equal(JSON.parse(readFileSync(hf2, 'utf8')).baseUrl, 'https://explicit.example.com', '显式配置优先于兜底学习')
+})
+
+// 安全回归（2026-11-02）：学习必须发生在鉴权之后，否则未鉴权请求可投毒 host.json 并借 hostAllowed 绕过 Host 闸
+test('安全：未鉴权的外部请求伪造 X-Forwarded 头投毒 host.json 被拒（baseUrl 不被改写）', async () => {
+  const env = startModule({}) // 未配置 publicBaseUrl = 原本会走 X-Forwarded 兜底学习的场景
+  const hostFile = env.api.dataDir('host.json')
+  const before = JSON.parse(readFileSync(hostFile, 'utf8')).baseUrl
+  // 攻击面：伪造 Host + X-Forwarded-Host + X-Forwarded-Proto，且不带任何令牌
+  const poison = { host: 'evil.example.net', 'x-forwarded-host': 'evil.example.net', 'x-forwarded-proto': 'https' }
+  const noToken = await env.call('/status', { token: '', headers: poison })
+  assert.ok([401, 403].includes(noToken.status), `未带 token 的投毒请求必须被拒（实际 ${noToken.status}）`)
+  // 即便 Host 闸先挡住（403），也不能在挡之前写盘
+  assert.notEqual(JSON.parse(readFileSync(hostFile, 'utf8')).baseUrl, 'https://evil.example.net', 'host.json 的 baseUrl 不能被投毒成攻击者地址')
+  assert.equal(JSON.parse(readFileSync(hostFile, 'utf8')).baseUrl, before, 'baseUrl 保持原值（未被任何未鉴权请求改写）')
+  // 坏令牌同理：401 之后同样不得学习
+  const badToken = await env.call('/status', { token: 'deadbeef'.repeat(6), headers: poison })
+  assert.ok([401, 403].includes(badToken.status), `坏令牌的投毒请求必须被拒（实际 ${badToken.status}）`)
+  assert.notEqual(JSON.parse(readFileSync(hostFile, 'utf8')).baseUrl, 'https://evil.example.net', '坏令牌同样不能投毒')
+})
+
+test('安全：鉴权通过后 X-Forwarded 兜底学习仍生效（能力保留，只是挪到鉴权之后）', async () => {
+  const env = startModule({})
+  const hostFile = env.api.dataDir('host.json')
+  assert.equal(JSON.parse(readFileSync(hostFile, 'utf8')).baseUrl, null, '端口未注入：学习前是 null')
+  // 与用例 1 同一套攻击头，唯一区别是这次带合法令牌：Host 用回环（先过严格 Host 闸），
+  // X-Forwarded 头带对外地址 → 学习按设计生效，证明能力只被「挪后」而没被删掉。
+  const r = await env.call('/status', {
+    headers: { host: '127.0.0.1:53210', 'x-forwarded-host': 'evil.example.net', 'x-forwarded-proto': 'https' },
+  })
+  assert.equal(r.status, 200, '带合法 token 的反代转发放行')
+  assert.equal(JSON.parse(readFileSync(hostFile, 'utf8')).baseUrl, 'https://evil.example.net', '鉴权后学习照旧写进 host.json')
+  assert.equal(env.exports.status().publicBaseUrl, 'https://evil.example.net', '学到后 status 也如实上报（remoteClient 打开）')
+})
+
+test('安全：未鉴权投毒在「Host 闸已放行」的路径上也写不进 host.json（回环 Host 也一样）', async () => {
+  // 第一道闸（Host）被放行时，第二道闸（token）必须单独站住，且失败的请求一个字节都不许写
+  const env = startModule({}) // 未配置 publicBaseUrl
+  const hostFile = env.api.dataDir('host.json')
+  // 先把端口注入好：这样回环 Host 的「端口漂移学习」是 no-op，任何 baseUrl 变化都只能来自投毒，
+  // 断言才不会把同机模式合法的端口学习误判成漏洞（反过来也保证测的确实是学习闸而不是端口逻辑）。
+  assert.equal(env.exports.setWebPort(53210), true)
+  const before = JSON.parse(readFileSync(hostFile, 'utf8')).baseUrl
+  assert.equal(before, 'http://127.0.0.1:53210', '起点：端口已注入')
+  // Host 用回环（必然过 Host 闸），只靠 X-Forwarded 试图学一个攻击者地址，且不带令牌
+  const noTk = await env.call('/status', {
+    token: '',
+    headers: { host: '127.0.0.1:53210', 'x-forwarded-host': 'evil.example', 'x-forwarded-proto': 'https' },
+  })
+  assert.equal(noTk.status, 401, 'Host 闸放行后仍必须被 token 闸拦成 401')
+  assert.equal(JSON.parse(readFileSync(hostFile, 'utf8')).baseUrl, before, '未鉴权请求不得写 host.json（baseUrl 一个字节都不变）')
+  assert.notEqual(JSON.parse(readFileSync(hostFile, 'utf8')).baseUrl, 'https://evil.example', '绝不能学成攻击者地址')
+  // 坏令牌同理
+  const badTk = await env.call('/status', {
+    token: 'deadbeef'.repeat(6),
+    headers: { host: '127.0.0.1:53210', 'x-forwarded-host': 'evil.example', 'x-forwarded-proto': 'https' },
+  })
+  assert.equal(badTk.status, 401)
+  assert.equal(JSON.parse(readFileSync(hostFile, 'utf8')).baseUrl, before, '坏令牌同样不得写 host.json')
+  // 未鉴权请求也不能借学习结果给后续请求「开闸」（Host 闸不能因未鉴权输入而放宽）
+  const follow = await env.call('/status', { headers: { host: 'evil.example' } })
+  assert.equal(follow.status, 403, '未鉴权的 X-Forwarded 不能让 evil.example 进白名单')
+})
+
+test('安全：携带合法 token 的远端 Host 请求仍被 Host 闸拒绝（学习不改变「未配置就不放行远端」）', async () => {
+  // 未配置 publicBaseUrl 时，即使令牌正确、且伪造 Host 与 X-Forwarded 完全自洽，也不得放行：
+  // 否则等于「任何能构造该请求头的人」都能用 Host 闸换一个令牌猜测入口（Host 闸必须独立成立）。
+  const env = startModule({})
+  const hostFile = env.api.dataDir('host.json')
+  const before = JSON.parse(readFileSync(hostFile, 'utf8')).baseUrl
+  const r = await env.call('/status', {
+    headers: { host: 'evil.example', 'x-forwarded-host': 'evil.example', 'x-forwarded-proto': 'https' },
+  })
+  assert.equal(r.status, 403, '未配置 publicBaseUrl：远端 Host 一律 403（哪怕带合法 token）')
+  assert.equal(JSON.parse(readFileSync(hostFile, 'utf8')).baseUrl, before, '被 403 的请求不得写 host.json')
+})
+
+test('安全：显式配置 publicBaseUrl 时，已鉴权的伪造 X-Forwarded 也不得覆盖配置', async () => {
+  const env = startModule({ settings: { publicBaseUrl: 'https://bot.example.com' } })
+  const hostFile = env.api.dataDir('host.json')
+  assert.equal(JSON.parse(readFileSync(hostFile, 'utf8')).baseUrl, 'https://bot.example.com', '显式配置起始值')
+  // 回环 Host + 合法 token + 伪造 X-Forwarded：能过 Host 闸与鉴权，但学习必须被显式配置挡住
+  const r = await env.call('/status', {
+    headers: { host: '127.0.0.1:53210', 'x-forwarded-host': 'evil.example.net', 'x-forwarded-proto': 'https' },
+  })
+  assert.equal(r.status, 200, '回环 Host + 合法 token 正常放行')
+  assert.equal(JSON.parse(readFileSync(hostFile, 'utf8')).baseUrl, 'https://bot.example.com', '显式配置优先：host.json 的 baseUrl 不被伪造头覆盖')
+  assert.equal(env.exports.status().publicBaseUrl, 'https://bot.example.com', 'status 仍报显式配置的地址')
+})
+
+test('同机零退化：未配置 publicBaseUrl 时 host.json / guard 与旧行为一致', async () => {
+  const env = startModule()
+  const hostFile = env.api.dataDir('host.json')
+  const h1 = JSON.parse(readFileSync(hostFile, 'utf8'))
+  // 旧契约逐字段一致：端口未注入写 null、api 照旧、token 照旧
+  assert.equal(h1.version, 1)
+  assert.equal(h1.baseUrl, null)
+  assert.equal(h1.api, '/aurabot/api')
+  assert.equal(h1.token, env.token)
+  assert.equal(env.exports.status().remoteClient, false)
+  assert.equal(env.exports.setWebPort(53211), true)
+  assert.equal(JSON.parse(readFileSync(hostFile, 'utf8')).baseUrl, 'http://127.0.0.1:53211', '端口注入照旧')
+  await env.call('/status', { headers: { host: '127.0.0.1:53299' } })
+  assert.equal(JSON.parse(readFileSync(hostFile, 'utf8')).baseUrl, 'http://127.0.0.1:53299', 'Host 头漂移学习照旧')
+  // guard：非回环 Host 在同机模式下照旧 403（无对外地址可放行）
+  const bad = await env.call('/status', { headers: { host: 'bot.example.com' } })
+  assert.equal(bad.status, 403, '同机模式：远端 Host 仍拒绝')
+})
+
+test('客户端 readHost：接受远端 http(s) URL；坏 token 照旧拒绝；null 照旧等待', async () => {
+  const src = readFileSync(join(MODULE_DIR, 'pet-client', 'main.js'), 'utf8')
+  const m = src.match(/function readHost\(\) \{[\s\S]*?\/\*\* 回环主机名判定[\s\S]*?\n\}/)
+  assert.ok(m, '要能从模板里抽出 readHost（含 isLoopbackHostname）做隔离求值')
+  const make = (content) => {
+    const fsStub = { readFileSync: () => content }
+    return new Function('fs', 'HOST_FILE', m[0] + '; return readHost')(fsStub, 'host.json')
+  }
+  const good = (baseUrl, token = 'a'.repeat(48)) => JSON.stringify({ baseUrl, token, api: '/aurabot/api' })
+  const remote = make(good('https://bot.example.com'))()
+  assert.equal(remote.baseUrl, 'https://bot.example.com', '远端 https 地址放行')
+  const lan = make(good('http://192.168.1.5:3000'))()
+  assert.equal(lan.baseUrl, 'http://192.168.1.5:3000', '远端 http（局域网/明文）也放行，不阻断')
+  const loop = make(good('http://127.0.0.1:53210'))()
+  assert.equal(loop.baseUrl, 'http://127.0.0.1:53210', '同机回环照旧放行')
+  assert.equal(make(good('https://bot.example.com', 'zzz'))(), null, 'token 格式校验照旧')
+  assert.equal(make(JSON.stringify({ baseUrl: null, token: 'a'.repeat(48) }))(), null, 'baseUrl=null（端口自举等待期）照旧返回 null')
+})
+
+test('客户端包：/client-package 返回合法 zip（含 main.js 与内嵌远端 host.json）', async () => {
+  const { inflateRawSync } = await import('node:zlib')
+  const env = startModule({ settings: { publicBaseUrl: 'https://bot.example.com' } })
+  const r = await env.call('/client-package')
+  assert.equal(r.status, 200)
+  const zip = Buffer.from(r.raw)
+  // 用测试侧的第二套解析器读 central directory，交叉验证 zipBuffer 的产物
+  assert.equal(zip.readUInt32LE(zip.length - 22), 0x06054b50, '尾部是 EOCD')
+  const count = zip.readUInt16LE(zip.length - 22 + 10)
+  let ptr = zip.readUInt32LE(zip.length - 22 + 16)
+  const files = {}
+  for (let i = 0; i < count; i++) {
+    assert.equal(zip.readUInt32LE(ptr), 0x02014b50, `central entry ${i} 签名正确`)
+    const method = zip.readUInt16LE(ptr + 10)
+    const csize = zip.readUInt32LE(ptr + 20)
+    const nameLen = zip.readUInt16LE(ptr + 28)
+    const localOff = zip.readUInt32LE(ptr + 42)
+    const name = zip.toString('utf8', ptr + 46, ptr + 46 + nameLen)
+    // CRC32 校验（测试侧独立实现表）：防 zipBuffer 写坏 CRC 导致解压端报损坏
+    const dataOff = localOff + 30 + zip.readUInt16LE(localOff + 26) + zip.readUInt16LE(localOff + 28)
+    const data = method === 0 ? zip.subarray(dataOff, dataOff + csize) : inflateRawSync(zip.subarray(dataOff, dataOff + csize))
+    {
+      const table = []
+      for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; table[n] = c }
+      let c = -1
+      for (const b of data) c = table[(c ^ b) & 0xff] ^ (c >>> 8)
+      assert.equal((c ^ -1) >>> 0, zip.readUInt32LE(ptr + 16), `CRC32 对得上：${name}`)
+    }
+    files[name] = data
+    ptr += 46 + nameLen + zip.readUInt16LE(ptr + 30) + zip.readUInt16LE(ptr + 32)
+  }
+  assert.ok(files['main.js'], '客户端包里有 main.js')
+  assert.ok(files['behavior.js'], '客户端包里有 behavior.js（行为层不能缺）')
+  const host = JSON.parse(files['host.json'].toString('utf8'))
+  assert.equal(host.baseUrl, 'https://bot.example.com', 'host.json 内嵌远端地址')
+  assert.equal(host.token, env.token, 'host.json 内嵌 token（用户下载即可直连）')
+  // 未配置远端时也能打包（host.json 是同机内容），但按钮只在远端模式出现
+  const env2 = startModule({})
+  const r2 = await env2.call('/client-package')
+  assert.equal(r2.status, 200, '同机模式打包照常工作（面板不展示该按钮）')
+})
+
