@@ -187,6 +187,38 @@
       "publishedAt": "2026-11-02T04:13:38.445Z"
     },
     {
+      "id": "phone",
+      "name": "手机逛逛",
+      "version": "0.1.0",
+      "description": "通过 ADB 操控 Android 手机：按主人教好的流程自动签到/浏览/点赞，或自由推理完成一句话任务",
+      "category": "platform",
+      "tags": [
+        "adb",
+        "手机",
+        "自动化"
+      ],
+      "author": "Aurabot",
+      "license": "MIT",
+      "api": 1,
+      "minPluginVersion": "1.2.0",
+      "requires": [],
+      "capabilities": [
+        "network",
+        "filesystem",
+        "process",
+        "plugin-config",
+        "plugin-internals"
+      ],
+      "replacesBuiltin": false,
+      "tag": "phone-v0.1.0",
+      "file": "phone-v0.1.0.zip",
+      "path": "phone-v0.1.0/phone-v0.1.0.zip",
+      "size": 72513,
+      "sha256": "b71356a6e1e6da9a9ce98dc1a0c251823aee74cf107289e1667d04e99f51171b",
+      "commit": "698df25d56bc44d25c2739d69fed22f20fe143d2",
+      "publishedAt": "2026-11-02T04:22:26.464Z"
+    },
+    {
       "id": "tieba-reader",
       "name": "逛贴吧（只读）",
       "version": "1.5.0",
@@ -220,5 +252,5 @@
     }
   ],
   "revoked": [],
-  "generatedAt": "2026-11-02T04:14:04.226Z"
+  "generatedAt": "2026-11-02T04:22:26.464Z"
 }
