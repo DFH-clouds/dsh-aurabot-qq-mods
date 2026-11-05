@@ -187,7 +187,7 @@
     {
       "id": "pet",
       "name": "桌宠",
-      "version": "1.0.10",
+      "version": "1.0.11",
       "description": "把大肥鱼请到桌面上：会冒气泡、做小动作，你在干活时也陪着你。",
       "category": "desktop",
       "tags": [
@@ -208,13 +208,13 @@
       ],
       "replacesBuiltin": false,
       "homepage": "https://github.com/accomplish07zrh-eng/dsh-aurabot-qq",
-      "tag": "pet-v1.0.10",
-      "file": "pet-v1.0.10.zip",
-      "path": "pet-v1.0.10/pet-v1.0.10.zip",
-      "size": 180297,
-      "sha256": "b96318aca33e331467070bc494f447320af6c3cd79a706f8843ba7e4190729ac",
-      "commit": "58d3e0102532a89b2ce2569fba423b3ec78cbdb6",
-      "publishedAt": "2026-11-03T07:24:21.624Z"
+      "tag": "pet-v1.0.11",
+      "file": "pet-v1.0.11.zip",
+      "path": "pet-v1.0.11/pet-v1.0.11.zip",
+      "size": 181426,
+      "sha256": "f4d61838c17d0835fc7b3002e26dc4d32e00aeaa9bbe5ba3f242553be3f4b5f0",
+      "commit": "efdbb5c09ae817cb804e298dc531fbd48113f47a",
+      "publishedAt": "2026-11-05T11:55:41.566Z"
     },
     {
       "id": "phone",
@@ -312,5 +312,5 @@
     }
   ],
   "revoked": [],
-  "generatedAt": "2026-11-05T11:43:13.214Z"
+  "generatedAt": "2026-11-05T11:55:41.566Z"
 }
