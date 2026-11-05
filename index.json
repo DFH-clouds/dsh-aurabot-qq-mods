@@ -249,6 +249,36 @@
       "publishedAt": "2026-11-02T22:42:01.291Z"
     },
     {
+      "id": "rss-reader",
+      "name": "自主上网",
+      "version": "1.0.0",
+      "description": "定时读 RSS 订阅源，把有意思的条目交给主动发言决策（她自己决定要不要跟主人聊）",
+      "category": "platform",
+      "tags": [
+        "RSS",
+        "订阅",
+        "上网",
+        "阅读"
+      ],
+      "author": "RookieApe-tao",
+      "license": "MIT",
+      "api": 1,
+      "minPluginVersion": "1.2.0",
+      "requires": [],
+      "capabilities": [
+        "network",
+        "filesystem"
+      ],
+      "replacesBuiltin": false,
+      "tag": "rss-reader-v1.0.0",
+      "file": "rss-reader-v1.0.0.zip",
+      "path": "rss-reader-v1.0.0/rss-reader-v1.0.0.zip",
+      "size": 17886,
+      "sha256": "ccd91233501937f327f01be6b3b72c7b94647dd48dfa042e63530d60f9980312",
+      "commit": "59be385f35fb36c6d1de3406504470b84978ef34",
+      "publishedAt": "2026-11-05T12:14:07.525Z"
+    },
+    {
       "id": "tieba-reader",
       "name": "逛贴吧（只读）",
       "version": "1.5.0",
@@ -312,5 +342,5 @@
     }
   ],
   "revoked": [],
-  "generatedAt": "2026-11-05T11:55:41.566Z"
+  "generatedAt": "2026-11-05T12:14:07.525Z"
 }
