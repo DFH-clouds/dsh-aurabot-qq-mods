@@ -127,7 +127,7 @@
     {
       "id": "heybox",
       "name": "刷小黑盒",
-      "version": "1.4.1",
+      "version": "1.4.2",
       "description": "用主人的账号逛小黑盒：看帖子和热评，点赞、评论、发帖。支持谷时逛、扫码登录和浏览器验证。",
       "category": "platform",
       "tags": [
@@ -148,13 +148,13 @@
       ],
       "replacesBuiltin": false,
       "homepage": "https://github.com/accomplish07zrh-eng/dsh-aurabot-qq",
-      "tag": "heybox-v1.4.1",
-      "file": "heybox-v1.4.1.zip",
-      "path": "heybox-v1.4.1/heybox-v1.4.1.zip",
+      "tag": "heybox-v1.4.2",
+      "file": "heybox-v1.4.2.zip",
+      "path": "heybox-v1.4.2/heybox-v1.4.2.zip",
       "size": 73058,
-      "sha256": "15e2bff20db7f7e1e5b1e92fdafd448e44c03efd2e0d8270cd7dae5d14f3da68",
-      "commit": "3827609ce75cd6cb67d60ebd01b7a62f0d9cf448",
-      "publishedAt": "2026-11-06T06:03:15.318Z"
+      "sha256": "25056860180b8b051d49458294bfef2dacbd20e19822ac20ba5c38f524c51e50",
+      "commit": "bbaec667555e2c228400dbd6ef1fa8428214cf8d",
+      "publishedAt": "2026-11-06T12:25:21.237Z"
     },
     {
       "id": "history-vault",
@@ -340,7 +340,7 @@
     {
       "id": "tieba-reader",
       "name": "逛贴吧（只读）",
-      "version": "1.5.1",
+      "version": "1.5.2",
       "description": "只读搜索和浏览贴吧，也可按兴趣向主人私聊分享。",
       "category": "platform",
       "tags": [
@@ -361,13 +361,13 @@
         "plugin-internals"
       ],
       "replacesBuiltin": false,
-      "tag": "tieba-reader-v1.5.1",
-      "file": "tieba-reader-v1.5.1.zip",
-      "path": "tieba-reader-v1.5.1/tieba-reader-v1.5.1.zip",
-      "size": 125978,
-      "sha256": "b0ad1b0ab23b0123ad40724492d5c85d7f490ebee9eb3eef1612a6ea7081dc0c",
-      "commit": "3827609ce75cd6cb67d60ebd01b7a62f0d9cf448",
-      "publishedAt": "2026-11-06T06:03:15.318Z"
+      "tag": "tieba-reader-v1.5.2",
+      "file": "tieba-reader-v1.5.2.zip",
+      "path": "tieba-reader-v1.5.2/tieba-reader-v1.5.2.zip",
+      "size": 125979,
+      "sha256": "59d43e3fe5a3ab5c47b424f7eacb9eb9a55c3c7f506cd132f42e56e5199b81ff",
+      "commit": "bbaec667555e2c228400dbd6ef1fa8428214cf8d",
+      "publishedAt": "2026-11-06T12:25:21.237Z"
     },
     {
       "id": "tophub",
@@ -432,5 +432,5 @@
     }
   ],
   "revoked": [],
-  "generatedAt": "2026-11-06T06:03:15.318Z"
+  "generatedAt": "2026-11-06T12:25:21.237Z"
 }
