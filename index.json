@@ -402,8 +402,8 @@
     {
       "id": "windows-ops",
       "name": "逛电脑（Windows 自动化）",
-      "version": "1.1.1",
-      "description": "经 PowerShell 操作这台电脑：窗口枚举/激活/关闭、截屏、剪贴板读写、键鼠模拟。默认仅主人可用，带操作白名单与危险操作确认门槛。",
+      "version": "1.2.0",
+      "description": "经 PowerShell 操作这台电脑：读无障碍树（UIA）按元素点击/写值/读文本/触发表单，窗口枚举/激活/关闭、截屏、剪贴板读写、键鼠模拟。默认仅主人可用，带操作白名单与危险操作确认门槛。",
       "category": "platform",
       "tags": [
         "windows",
@@ -422,15 +422,15 @@
         "plugin-internals"
       ],
       "replacesBuiltin": false,
-      "tag": "windows-ops-v1.1.1",
-      "file": "windows-ops-v1.1.1.zip",
-      "path": "windows-ops-v1.1.1/windows-ops-v1.1.1.zip",
-      "size": 34778,
-      "sha256": "dca0fc8ee6758ed91304be7deb302834359aab10ce352317f56ce69b62534abe",
-      "commit": "3827609ce75cd6cb67d60ebd01b7a62f0d9cf448",
-      "publishedAt": "2026-11-06T06:03:15.318Z"
+      "tag": "windows-ops-v1.2.0",
+      "file": "windows-ops-v1.2.0.zip",
+      "path": "windows-ops-v1.2.0/windows-ops-v1.2.0.zip",
+      "size": 51178,
+      "sha256": "fe73a3254ebf5c80fe2751939c8c332ed061e9340ad766cf68c370dd3b501911",
+      "commit": "d70da76059b6fd0edc4ee6b6d10216f1628058f1",
+      "publishedAt": "2026-11-06T12:49:40.396Z"
     }
   ],
   "revoked": [],
-  "generatedAt": "2026-11-06T12:25:21.237Z"
+  "generatedAt": "2026-11-06T12:49:40.396Z"
 }
