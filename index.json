@@ -126,6 +126,34 @@
       "publishedAt": "2026-11-05T12:16:31.526Z"
     },
     {
+      "id": "history-vault",
+      "name": "跨会话记忆",
+      "version": "0.1.0",
+      "description": "三层存储跨 DSH 会话保留聊天细节：原文层 / 日摘要层 / 月印象层，按 skills 方式分层读取，避免会话归档后细节丢失和重复压缩上下文",
+      "category": "manage",
+      "tags": [
+        "记忆",
+        "历史",
+        "上下文"
+      ],
+      "author": "Nightc",
+      "license": "MIT",
+      "api": 1,
+      "minPluginVersion": "1.2.0",
+      "requires": [],
+      "capabilities": [
+        "plugin-internals"
+      ],
+      "replacesBuiltin": false,
+      "tag": "history-vault-v0.1.0",
+      "file": "history-vault-v0.1.0.zip",
+      "path": "history-vault-v0.1.0/history-vault-v0.1.0.zip",
+      "size": 16858,
+      "sha256": "c89ad7441ba23e6f7737275650e9f96f145fb003e71d5dc2b6a8c6b690d62813",
+      "commit": "fdade0e6e75b54b819ddcd9a830f410f4887b04b",
+      "publishedAt": "2026-11-06T03:59:03.805Z"
+    },
+    {
       "id": "meme-wiki",
       "name": "梗百科",
       "version": "0.2.5",
@@ -342,5 +370,5 @@
     }
   ],
   "revoked": [],
-  "generatedAt": "2026-11-05T12:16:31.526Z"
+  "generatedAt": "2026-11-06T03:59:03.805Z"
 }
