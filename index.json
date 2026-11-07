@@ -276,6 +276,37 @@
       "publishedAt": "2026-11-07T12:19:35.067Z"
     },
     {
+      "id": "moodboard",
+      "name": "心情看板",
+      "version": "1.0.0",
+      "description": "桌面固定小窗：她的心情与起伏历史、目的引擎的驱力和心情向量、记忆里的相处经验与说话方式",
+      "category": "desktop",
+      "tags": [
+        "心情",
+        "看板",
+        "目的引擎",
+        "记忆"
+      ],
+      "author": "RookieApe-tao",
+      "license": "MIT",
+      "api": 1,
+      "minPluginVersion": "1.2.0",
+      "requires": [],
+      "capabilities": [
+        "network",
+        "plugin-internals",
+        "process"
+      ],
+      "replacesBuiltin": false,
+      "tag": "moodboard-v1.0.0",
+      "file": "moodboard-v1.0.0.zip",
+      "path": "moodboard-v1.0.0/moodboard-v1.0.0.zip",
+      "size": 9976,
+      "sha256": "2adc8b04aac2c01e18b5b91a237202a1de0d162a5f19592a249b4c155fa1a6f9",
+      "commit": "3880b8766bfc4dba643a05b7d81a03a9c22afd43",
+      "publishedAt": "2026-11-07T14:19:58.408Z"
+    },
+    {
       "id": "pet",
       "name": "桌宠",
       "version": "1.0.14",
@@ -496,5 +527,5 @@
     }
   ],
   "revoked": [],
-  "generatedAt": "2026-11-07T14:19:28.212Z"
+  "generatedAt": "2026-11-07T14:19:58.408Z"
 }
